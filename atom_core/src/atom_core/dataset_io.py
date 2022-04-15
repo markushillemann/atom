@@ -14,6 +14,7 @@ import sensor_msgs.point_cloud2 as pc2
 import tf
 import atom_core.pypcd as pypcd
 import imageio
+import ros_numpy
 
 # 3rd-party
 # import pypcd
@@ -27,6 +28,7 @@ from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header
 from atom_calibration.collect.label_messages import (convertDepthImage32FC1to16UC1, convertDepthImage16UC1to32FC1,
                                                      imageShowUInt16OrFloat32OrBool)
+from atom_core.cache import Cache
 
 
 def printImageInfo(image, text=None):
@@ -632,3 +634,9 @@ def addNoiseToInitialGuess(dataset, args, selected_collection_key):
                     dataset['collections'][selected_collection_key]['transforms'][tf_link]['quat']
                 dataset['collections'][collection_key]['transforms'][tf_link]['trans'] = \
                     dataset['collections'][selected_collection_key]['transforms'][tf_link]['trans']
+
+
+@Cache(args_to_ignore=['dataset'])
+def getCvImageFromCollectionSensor(collection_key, sensor_key, dataset):
+    dictionary = dataset['collections'][collection_key]['data'][sensor_key]
+    return getCvImageFromDictionary(dictionary)

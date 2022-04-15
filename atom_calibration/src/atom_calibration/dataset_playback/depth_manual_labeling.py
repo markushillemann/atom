@@ -6,34 +6,6 @@ import numpy as np
 import scipy.spatial.distance
 from atom_calibration.collect.label_messages import *
 from atom_core.dataset_io import getMsgAndCvImageFromDictionaryDepth
-from sqlalchemy import true
-
-
-def normalizeDepthImage(image, max_value=5):
-    height, width = image.shape
-    gui_image = np.zeros((height, width, 3), dtype=np.uint8)
-    gui_image[:, :, 0] = image / max_value * 255
-    gui_image[:, :, 1] = image / max_value * 255
-    gui_image[:, :, 2] = image / max_value * 255
-    return gui_image
-
-
-def drawLabelsOnImage(labels, image, color_idxs=(0, 200, 255), color_idxs_limits=(255, 0, 200)):
-    _, width, _ = image.shape
-
-    for idx in labels['idxs']:
-        # convert from linear idx to x_pix and y_pix indices.
-        y = int(idx / width)
-        x = int(idx - y * width)
-        cv2.line(image, (x, y), (x, y), color_idxs, 3)
-
-    for idx in labels['idxs_limit_points']:
-        # convert from linear idx to x_pix and y_pix indices.
-        y = int(idx / width)
-        x = int(idx - y * width)
-        cv2.line(image, (x, y), (x, y), color_idxs_limits, 3)
-
-    return image
 
 
 def clickedPointsCallback(point_msg, clicked_points, dataset, sensor_key, selection,

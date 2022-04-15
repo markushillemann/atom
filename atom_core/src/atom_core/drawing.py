@@ -2,6 +2,13 @@ import math
 
 import cv2
 import numpy as np
+import rospy
+from visualization_msgs.msg import Marker, MarkerArray
+from std_msgs.msg import Header, ColorRGBA
+from geometry_msgs.msg import Point, Pose, Vector3, Quaternion
+
+# own packages
+from atom_core.config_io import uriReader
 
 
 def draw_concentric_circles(plt, radii, color='tab:gray'):
@@ -56,7 +63,6 @@ def drawSquare2D(image, x, y, size, color=(0, 0, 255), thickness=1):
     br = (int(x + size), int(y + size))
     bl = (int(x - size), int(y + size))
 
-
     # cv2.line(image, (x,y), (x,y), color, 5)
     cv2.line(image, tl, tr, color, thickness)
     cv2.line(image, tr, br, color, thickness)
@@ -87,3 +93,102 @@ def drawCross2D(image, x, y, size, color=(0, 0, 255), thickness=1):
 
     cv2.line(image, left, right, color, thickness)
     cv2.line(image, top, bottom, color, thickness)
+
+
+def drawLabelsOnImage(labels, image, color_idxs=(0, 200, 255), color_idxs_limits=(255, 0, 200)):
+    _, width, _ = image.shape
+
+    for idx in labels['idxs']:
+        # convert from linear idx to x_pix and y_pix indices.
+        y = int(idx / width)
+        x = int(idx - y * width)
+        cv2.line(image, (x, y), (x, y), color_idxs, 3)
+
+    for idx in labels['idxs_limit_points']:
+        # convert from linear idx to x_pix and y_pix indices.
+        y = int(idx / width)
+        x = int(idx - y * width)
+        cv2.line(image, (x, y), (x, y), color_idxs_limits, 3)
+
+    return image
+
+
+def createPatternMarkers(frame_id, ns, collection_key, now, dataset, graphics):
+    markers = MarkerArray()
+
+    # Draw pattern frame lines_sampled (top, left, right, bottom)
+    marker = Marker(header=Header(frame_id=frame_id, stamp=now),
+                    ns=ns + '-frame_sampled', id=0, frame_locked=True,
+                    type=Marker.CUBE_LIST, action=Marker.ADD, lifetime=rospy.Duration(0),
+                    pose=Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(x=0, y=0, z=0, w=1)),
+                    scale=Vector3(x=0.01, y=0.01, z=0.01),
+                    color=ColorRGBA(r=graphics['collections'][collection_key]['color'][0],
+                                    g=graphics['collections'][collection_key]['color'][1],
+                                    b=graphics['collections'][collection_key]['color'][2], a=1.0))
+
+    pts = []
+    pts.extend(dataset['patterns']['frame']['lines_sampled']['left'])
+    pts.extend(dataset['patterns']['frame']['lines_sampled']['right'])
+    pts.extend(dataset['patterns']['frame']['lines_sampled']['top'])
+    pts.extend(dataset['patterns']['frame']['lines_sampled']['bottom'])
+    for pt in pts:
+        marker.points.append(Point(x=pt['x'], y=pt['y'], z=0))
+
+    markers.markers.append(marker)
+
+    # Draw corners
+    marker = Marker(header=Header(frame_id=frame_id, stamp=now),
+                    ns=ns + '-corners', id=0, frame_locked=True,
+                    type=Marker.CUBE_LIST, action=Marker.ADD, lifetime=rospy.Duration(0),
+                    pose=Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(x=0, y=0, z=0, w=1)),
+                    scale=Vector3(x=0.02, y=0.02, z=0.02),
+                    color=ColorRGBA(r=graphics['collections'][collection_key]['color'][0],
+                                    g=graphics['collections'][collection_key]['color'][1],
+                                    b=graphics['collections'][collection_key]['color'][2], a=1.0))
+
+    for idx_corner, pt in enumerate(dataset['patterns']['corners']):
+        marker.points.append(Point(x=pt['x'], y=pt['y'], z=0))
+        marker.colors.append(ColorRGBA(r=graphics['pattern']['colormap'][idx_corner, 0],
+                                       g=graphics['pattern']['colormap'][idx_corner, 1],
+                                       b=graphics['pattern']['colormap'][idx_corner, 2], a=1))
+
+    markers.markers.append(marker)
+
+    # Draw transitions
+    # TODO we don't use this anymore, should we draw it? Perhaps it will be used for 2D Lidar ...
+    # marker = Marker(header=Header(frame_id=frame_id, stamp=now),
+    #                 ns=ns + '-transitions', id=0, frame_locked=True,
+    #                 type=Marker.POINTS, action=Marker.ADD, lifetime=rospy.Duration(0),
+    #                 pose=Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(x=0, y=0, z=0, w=1)),
+    #                 scale=Vector3(x=0.015, y=0.015, z=0),
+    #                 color=ColorRGBA(r=graphics['collections'][collection_key]['color'][0],
+    #                                 g=graphics['collections'][collection_key]['color'][1],
+    #                                 b=graphics['collections'][collection_key]['color'][2], a=1.0))
+    #
+    # pts = dataset['patterns']['transitions']['vertical']
+    # pts.extend(dataset['patterns']['transitions']['horizontal'])
+    # for pt in pts:
+    #     marker.points.append(Point(x=pt['x'], y=pt['y'], z=0))
+    #
+    # markers.markers.append(marker)
+
+    # Draw the mesh, if one is provided
+    if not dataset['calibration_config']['calibration_pattern']['mesh_file'] == "":
+        # rgba = graphics['collections'][collection_key]['color']
+        # color = ColorRGBA(r=rgba[0], g=rgba[1], b=rgba[2], a=1))
+
+        # print('Got the mesh it is: ' + dataset['calibration_config']['calibration_pattern']['mesh_file'])
+        m = Marker(header=Header(frame_id=frame_id, stamp=now),
+                   ns=str(collection_key) + '-mesh', id=0, frame_locked=True,
+                   type=Marker.MESH_RESOURCE, action=Marker.ADD, lifetime=rospy.Duration(0),
+                   pose=Pose(position=Point(x=0, y=0, z=0),
+                             orientation=Quaternion(x=0, y=0, z=0, w=1)),
+                   scale=Vector3(x=1.0, y=1.0, z=1.0),
+                   color=ColorRGBA(r=1, g=1, b=1, a=1))
+
+        mesh_file, _, _ = uriReader(dataset['calibration_config']['calibration_pattern']['mesh_file'])
+        m.mesh_resource = 'file://' + mesh_file  # mesh_resource needs uri format
+        m.mesh_use_embedded_materials = True
+        markers.markers.append(m)
+
+    return markers  # return markers

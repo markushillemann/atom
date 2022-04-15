@@ -8,6 +8,7 @@ import copy
 import math
 import os
 import pprint
+
 import networkx as nx
 import matplotlib.pyplot as plt
 
@@ -15,123 +16,32 @@ import matplotlib.pyplot as plt
 import colorama
 import cv2
 import ros_numpy
+
 # import numpy as np  # TODO Eurico, line  fails if I don't do this
 import rospy
 import numpy as np
 import tf
 import tf2_ros
-from atom_core.cache import Cache
-
+from atom_core.image_processing import normalizeDepthImage
 from rospy_message_converter import message_converter
 from atom_core.rospy_urdf_to_rviz_converter import urdfToMarkerArray
 from std_msgs.msg import Header, ColorRGBA
-from urdf_parser_py.urdf import URDF
-from sensor_msgs.msg import Image, sensor_msgs, CameraInfo, geometry_msgs
+from sensor_msgs.msg import sensor_msgs
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point, Pose, Vector3, Quaternion, Transform, TransformStamped
 from cv_bridge import CvBridge
-from colorama import Style, Fore
-
 from matplotlib import cm
 
 # own packages
-from atom_core.drawing import drawSquare2D, drawCross2D
+from atom_core.drawing import createPatternMarkers, drawLabelsOnImage, drawSquare2D, drawCross2D
 from atom_core.naming import generateName
-from atom_core.config_io import readXacroFile, execute, uriReader
-from atom_core.dataset_io import getCvImageFromDictionary, getPointCloudMessageFromDictionary, genCollectionPrefix
-
+from atom_core.config_io import readXacroFile, uriReader
+from atom_core.dataset_io import getCvImageFromDictionaryDepth, genCollectionPrefix, getCvImageFromCollectionSensor
 from atom_calibration.calibration.objective_function import *
-
 
 # -------------------------------------------------------------------------------
 # --- FUNCTIONS
 # -------------------------------------------------------------------------------
-
-@Cache(args_to_ignore=['dataset'])
-def getCvImageFromCollectionSensor(collection_key, sensor_key, dataset):
-    dictionary = dataset['collections'][collection_key]['data'][sensor_key]
-    return getCvImageFromDictionary(dictionary)
-
-
-def createPatternMarkers(frame_id, ns, collection_key, now, dataset, graphics):
-    markers = MarkerArray()
-
-    # Draw pattern frame lines_sampled (top, left, right, bottom)
-    marker = Marker(header=Header(frame_id=frame_id, stamp=now),
-                    ns=ns + '-frame_sampled', id=0, frame_locked=True,
-                    type=Marker.CUBE_LIST, action=Marker.ADD, lifetime=rospy.Duration(0),
-                    pose=Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(x=0, y=0, z=0, w=1)),
-                    scale=Vector3(x=0.01, y=0.01, z=0.01),
-                    color=ColorRGBA(r=graphics['collections'][collection_key]['color'][0],
-                                    g=graphics['collections'][collection_key]['color'][1],
-                                    b=graphics['collections'][collection_key]['color'][2], a=1.0))
-
-    pts = []
-    pts.extend(dataset['patterns']['frame']['lines_sampled']['left'])
-    pts.extend(dataset['patterns']['frame']['lines_sampled']['right'])
-    pts.extend(dataset['patterns']['frame']['lines_sampled']['top'])
-    pts.extend(dataset['patterns']['frame']['lines_sampled']['bottom'])
-    for pt in pts:
-        marker.points.append(Point(x=pt['x'], y=pt['y'], z=0))
-
-    markers.markers.append(marker)
-
-    # Draw corners
-    marker = Marker(header=Header(frame_id=frame_id, stamp=now),
-                    ns=ns + '-corners', id=0, frame_locked=True,
-                    type=Marker.CUBE_LIST, action=Marker.ADD, lifetime=rospy.Duration(0),
-                    pose=Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(x=0, y=0, z=0, w=1)),
-                    scale=Vector3(x=0.02, y=0.02, z=0.02),
-                    color=ColorRGBA(r=graphics['collections'][collection_key]['color'][0],
-                                    g=graphics['collections'][collection_key]['color'][1],
-                                    b=graphics['collections'][collection_key]['color'][2], a=1.0))
-
-    for idx_corner, pt in enumerate(dataset['patterns']['corners']):
-        marker.points.append(Point(x=pt['x'], y=pt['y'], z=0))
-        marker.colors.append(ColorRGBA(r=graphics['pattern']['colormap'][idx_corner, 0],
-                                       g=graphics['pattern']['colormap'][idx_corner, 1],
-                                       b=graphics['pattern']['colormap'][idx_corner, 2], a=1))
-
-    markers.markers.append(marker)
-
-    # Draw transitions
-    # TODO we don't use this anymore, should we draw it? Perhaps it will be used for 2D Lidar ...
-    # marker = Marker(header=Header(frame_id=frame_id, stamp=now),
-    #                 ns=ns + '-transitions', id=0, frame_locked=True,
-    #                 type=Marker.POINTS, action=Marker.ADD, lifetime=rospy.Duration(0),
-    #                 pose=Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(x=0, y=0, z=0, w=1)),
-    #                 scale=Vector3(x=0.015, y=0.015, z=0),
-    #                 color=ColorRGBA(r=graphics['collections'][collection_key]['color'][0],
-    #                                 g=graphics['collections'][collection_key]['color'][1],
-    #                                 b=graphics['collections'][collection_key]['color'][2], a=1.0))
-    #
-    # pts = dataset['patterns']['transitions']['vertical']
-    # pts.extend(dataset['patterns']['transitions']['horizontal'])
-    # for pt in pts:
-    #     marker.points.append(Point(x=pt['x'], y=pt['y'], z=0))
-    #
-    # markers.markers.append(marker)
-
-    # Draw the mesh, if one is provided
-    if not dataset['calibration_config']['calibration_pattern']['mesh_file'] == "":
-        # rgba = graphics['collections'][collection_key]['color']
-        # color = ColorRGBA(r=rgba[0], g=rgba[1], b=rgba[2], a=1))
-
-        # print('Got the mesh it is: ' + dataset['calibration_config']['calibration_pattern']['mesh_file'])
-        m = Marker(header=Header(frame_id=frame_id, stamp=now),
-                   ns=str(collection_key) + '-mesh', id=0, frame_locked=True,
-                   type=Marker.MESH_RESOURCE, action=Marker.ADD, lifetime=rospy.Duration(0),
-                   pose=Pose(position=Point(x=0, y=0, z=0),
-                             orientation=Quaternion(x=0, y=0, z=0, w=1)),
-                   scale=Vector3(x=1.0, y=1.0, z=1.0),
-                   color=ColorRGBA(r=1, g=1, b=1, a=1))
-
-        mesh_file, _, _ = uriReader(dataset['calibration_config']['calibration_pattern']['mesh_file'])
-        m.mesh_resource = 'file://' + mesh_file  # mesh_resource needs uri format
-        m.mesh_use_embedded_materials = True
-        markers.markers.append(m)
-
-    return markers  # return markers
 
 
 def setupVisualization(dataset, args, selected_collection_key):
@@ -141,7 +51,7 @@ def setupVisualization(dataset, args, selected_collection_key):
     """
 
     # Create a python dictionary that will contain all the visualization related information
-    graphics = {'collections': {}, 'sensors': {}, 'pattern': {}, 'ros': {}, 'args': args}
+    graphics = {'collections': {}, 'pattern': {}, 'ros': {'sensors': {}}, 'args': args}
 
     # Parse xacro description file
     description_file, _, _ = uriReader(dataset['calibration_config']['description_file'])
@@ -199,13 +109,11 @@ def setupVisualization(dataset, args, selected_collection_key):
 
     # Create image publishers ----------------------------------------------------------
     # We need to republish a new image at every visualization
-    for collection_key, collection in dataset['collections'].items():
-        for sensor_key, sensor in dataset['sensors'].items():
-            # print(sensor_key)
+    for sensor_key, sensor in dataset['sensors'].items():
+        for collection_key, collection in dataset['collections'].items():
             if not collection['labels'][str(sensor_key)]['detected']:  # not detected by sensor in collection
                 continue
 
-            # if sensor['msg_type'] == 'Image':
             if sensor['modality'] == 'rgb' or sensor['modality'] == 'depth':
                 msg_type = sensor_msgs.msg.Image
                 topic = dataset['calibration_config']['sensors'][sensor_key]['topic_name']
@@ -217,26 +125,26 @@ def setupVisualization(dataset, args, selected_collection_key):
                 topic_name = '~c' + str(collection_key) + '/' + str(sensor_key) + '/camera_info'
                 graphics['collections'][collection_key][str(sensor_key)]['publisher_camera_info'] = \
                     rospy.Publisher(topic_name, msg_type, queue_size=0, latch=True)
-            # if sensor['modality']=='depth':
-            #     msg_type = sensor_msgs.msg.Image
-            #     topic = dataset['calibration_config']['sensors'][sensor_key]['topic_name']
-            #     topic_name = '~c' + str(collection_key) + topic + '/labeled'
-            #     graphics['collections'][collection_key][str(sensor_key)] = {'publisher': rospy.Publisher(
-            #         topic_name, msg_type, queue_size=0, latch=True)}
-            #
-            #     msg_type = sensor_msgs.msg.CameraInfo
-            #     topic_name = '~c' + str(collection_key) + '/' + str(sensor_key) + '/camera_info'
-            #     graphics['collections'][collection_key][str(sensor_key)]['publisher_camera_info'] = \
-            #         rospy.Publisher(topic_name, msg_type, queue_size=0, latch=True)
+            elif sensor['modality'] == 'depth':
+                msg_type = sensor_msgs.msg.Image
+                topic = dataset['calibration_config']['sensors'][sensor_key]['topic_name']
+                topic_name = '~c' + str(collection_key) + topic + '/labeled'
+                graphics['collections'][collection_key][str(sensor_key)] = {'publisher': rospy.Publisher(
+                    topic_name, msg_type, queue_size=0, latch=True)}
+
+                msg_type = sensor_msgs.msg.CameraInfo
+                topic_name = '~c' + str(collection_key) + '/' + str(sensor_key) + '/camera_info'
+                graphics['collections'][collection_key][str(sensor_key)]['publisher_camera_info'] = \
+                    rospy.Publisher(topic_name, msg_type, queue_size=0, latch=True)
 
     # Create Labeled Data publishers ----------------------------------------------------------
-    markers = MarkerArray()
-    for collection_key, collection in dataset['collections'].items():
-        for sensor_key, sensor in dataset['sensors'].items():
+    for sensor_key, sensor in dataset['sensors'].items():
+        markers = MarkerArray()
+        graphics['ros']['sensors'][sensor_key] = {}  # initialization
+        for collection_key, collection in dataset['collections'].items():
             if not collection['labels'][str(sensor_key)]['detected']:  # not detected by sensor in collection
                 continue
 
-            # if sensor['msg_type'] == 'LaserScan':  # -------- Publish the laser scan data ------------------------------
             if sensor['modality'] == 'lidar2d':
                 frame_id = genCollectionPrefix(collection_key, collection['data'][sensor_key]['header']['frame_id'])
                 marker = Marker(header=Header(frame_id=frame_id, stamp=now),
@@ -290,8 +198,7 @@ def setupVisualization(dataset, args, selected_collection_key):
                     marker.points.append(p)
                 markers.markers.append(copy.deepcopy(marker))
 
-            # if sensor['msg_type'] == 'PointCloud2':  # -------- Publish the velodyne data ----------------------------
-            if sensor['modality'] == 'lidar3d':
+            if sensor['modality'] == 'lidar3d':  # -------- Publish the velodyne data ----------------------------
                 # Add labelled points to the marker
                 frame_id = genCollectionPrefix(collection_key, collection['data'][sensor_key]['header']['frame_id'])
                 marker = Marker(header=Header(frame_id=frame_id, stamp=now),
@@ -329,18 +236,17 @@ def setupVisualization(dataset, args, selected_collection_key):
 
                 markers.markers.append(copy.deepcopy(marker))
 
-            # Setup visualization for depth
-            if sensor['modality'] == 'depth': # -------- Publish the depth  ----------------------------
+            if sensor['modality'] == 'depth':  # -------- Publish the depth  ----------------------------
                 # Add labelled points to the marker
                 frame_id = genCollectionPrefix(collection_key, collection['data'][sensor_key]['header']['frame_id'])
                 marker = Marker(header=Header(frame_id=frame_id, stamp=now),
                                 ns=str(collection_key) + '-' + str(sensor_key), id=0, frame_locked=True,
-                                type=Marker.SPHERE_LIST, action=Marker.ADD, lifetime=rospy.Duration(0),
+                                type=Marker.CUBE_LIST, action=Marker.ADD, lifetime=rospy.Duration(0),
                                 pose=Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(x=0, y=0, z=0, w=1)),
-                                scale=Vector3(x=0.02, y=0.02, z=0.02),
+                                scale=Vector3(x=0.015, y=0.015, z=0.015),
                                 color=ColorRGBA(r=graphics['collections'][collection_key]['color'][0],
                                                 g=graphics['collections'][collection_key]['color'][1],
-                                                b=graphics['collections'][collection_key]['color'][2], a=0.5)
+                                                b=graphics['collections'][collection_key]['color'][2], a=0.3)
                                 )
 
                 points = getPointsInDepthSensorAsNPArray(collection_key, sensor_key, 'idxs', dataset)
@@ -356,10 +262,10 @@ def setupVisualization(dataset, args, selected_collection_key):
                                 type=Marker.CUBE_LIST, action=Marker.ADD, lifetime=rospy.Duration(0),
                                 pose=Pose(position=Point(x=0, y=0, z=0),
                                           orientation=Quaternion(x=0, y=0, z=0, w=1)),
-                                scale=Vector3(x=0.07, y=0.07, z=0.07),
+                                scale=Vector3(x=0.05, y=0.05, z=0.05),
                                 color=ColorRGBA(r=graphics['collections'][collection_key]['color'][0],
                                                 g=graphics['collections'][collection_key]['color'][1],
-                                                b=graphics['collections'][collection_key]['color'][2], a=0.5)
+                                                b=graphics['collections'][collection_key]['color'][2], a=0.3)
                                 )
 
                 points = getPointsInDepthSensorAsNPArray(collection_key, sensor_key, 'idxs_limit_points', dataset)
@@ -368,8 +274,9 @@ def setupVisualization(dataset, args, selected_collection_key):
 
                 markers.markers.append(copy.deepcopy(marker))
 
-    graphics['ros']['MarkersLabeled'] = markers
-    graphics['ros']['PubLabeled'] = rospy.Publisher('~labeled_data', MarkerArray, queue_size=0, latch=True)
+        graphics['ros']['sensors'][sensor_key]['MarkersLabeled'] = markers
+        graphics['ros']['sensors'][sensor_key]['PubLabeled'] = rospy.Publisher(
+            '~' + sensor_key + '/labeled_data', MarkerArray, queue_size=0, latch=True)
 
     # -----------------------------------------------------------------------------------------------------
     # -------- Robot meshes
@@ -467,7 +374,7 @@ def setupVisualization(dataset, args, selected_collection_key):
                                           rgba=rgba, skip_links=immovable_links)
                     markers.markers.extend(m.markers)
 
-    graphics['ros']['robot_mesh_markers'] = markers
+    graphics['ros']['RobotMeshMarkers'] = markers
 
     # -----------------------------------------------------------------------------------------------------
     # -------- Publish the pattern data
@@ -629,22 +536,24 @@ def visualizationFunction(models):
         graphics['ros']['Counter'] = 0
 
     # Update markers stamp, so that rviz uses newer transforms to compute their poses.
-    for marker in graphics['ros']['robot_mesh_markers'].markers:
+    for marker in graphics['ros']['RobotMeshMarkers'].markers:
         marker.header.stamp = now
 
     # Publish the meshes
-    graphics['ros']['publisher_models'].publish(graphics['ros']['robot_mesh_markers'])
+    graphics['ros']['publisher_models'].publish(graphics['ros']['RobotMeshMarkers'])
 
     # Publish patterns
     for marker in graphics['ros']['MarkersPattern'].markers:
         marker.header.stamp = now
     graphics['ros']['PubPattern'].publish(graphics['ros']['MarkersPattern'])
 
-    # TODO update markers
     # Publish Labelled Data
-    for marker in graphics['ros']['MarkersLabeled'].markers:
-        marker.header.stamp = now
-    graphics['ros']['PubLabeled'].publish(graphics['ros']['MarkersLabeled'])
+    for sensor_key in graphics['ros']['sensors']:
+        for marker in graphics['ros']['sensors'][sensor_key]['MarkersLabeled'].markers:
+            marker.header.stamp = now
+
+        graphics['ros']['sensors'][sensor_key]['PubLabeled'].publish(
+            graphics['ros']['sensors'][sensor_key]['MarkersLabeled'])
 
     # Publish Laser Beams
     for marker in graphics['ros']['MarkersLaserBeams'].markers:
@@ -652,15 +561,13 @@ def visualizationFunction(models):
     graphics['ros']['PubLaserBeams'].publish(graphics['ros']['MarkersLaserBeams'])
 
     # Publish Annotated images
-    for collection_key, collection in collections.items():
-        for sensor_key, sensor in sensors.items():
+    if args['show_images']:
+        for collection_key, collection in collections.items():
+            for sensor_key, sensor in sensors.items():
+                if not collection['labels'][sensor_key]['detected']:  # not detected by sensor in collection
+                    continue
 
-            if not collection['labels'][sensor_key]['detected']:  # not detected by sensor in collection
-                continue
-
-            # if sensor['msg_type'] == 'Image':
-            if sensor['modality'] == 'rgb':
-                if args['show_images']:
+                if sensor['modality'] == 'rgb':
                     image = copy.deepcopy(getCvImageFromCollectionSensor(collection_key, sensor_key, dataset))
                     width = collection['data'][sensor_key]['width']
                     height = collection['data'][sensor_key]['height']
@@ -700,16 +607,23 @@ def visualizationFunction(models):
                     graphics['collections'][collection_key][sensor_key]['publisher_camera_info'].publish(
                         camera_info_msg)
 
-            # elif sensor['msg_type'] == 'LaserScan':
-            elif sensor['modality'] == 'lidar2d':
-                pass
-            # elif sensor['msg_type'] == 'PointCloud2':
-            elif sensor['modality'] == 'lidar3d':
-                pass
-            elif sensor['modality'] == 'depth':
-                # TODO check what to do here
-                pass
-            else:
-                raise ValueError("Unknown sensor msg_type or modality")
+                elif sensor['modality'] == 'depth':
+
+                    # Create image to draw on top
+                    image = getCvImageFromDictionaryDepth(collection['data'][sensor_key])
+                    gui_image = normalizeDepthImage(image, max_value=5)
+                    gui_image = drawLabelsOnImage(collection['labels'][sensor_key], gui_image)
+
+                    msg = CvBridge().cv2_to_imgmsg(gui_image, "passthrough")
+
+                    msg.header.frame_id = 'c' + collection_key + '_' + sensor['parent']
+                    graphics['collections'][collection_key][sensor_key]['publisher'].publish(msg)
+
+                    # Publish camera info message
+                    camera_info_msg = message_converter.convert_dictionary_to_ros_message('sensor_msgs/CameraInfo',
+                                                                                          sensor['camera_info'])
+                    camera_info_msg.header.frame_id = msg.header.frame_id
+                    graphics['collections'][collection_key][sensor_key]['publisher_camera_info'].publish(
+                        camera_info_msg)
 
     graphics['ros']['Rate'].sleep()

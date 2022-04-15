@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 
 # stdlib
-import matplotlib
 import os
-from os.path import exists
-
-
-import atom_core.config_io
-import atom_core.drawing
 import sys
 import argparse
 import subprocess
-
+from os.path import exists
 from copy import deepcopy
 from datetime import date, datetime
+
+import matplotlib
+import atom_core.config_io
+import atom_core.drawing
 
 # 3rd-party
 import yaml
@@ -25,15 +23,13 @@ import jinja2
 import matplotlib.pyplot as plt
 import networkx as nx
 
+# local packages
+import atom_core.utilities as utilities
 from colorama import Style, Fore
-
 from graphviz import Digraph
 from urdf_parser_py.urdf import URDF
 from matplotlib import cm
 from jinja2 import Environment, FileSystemLoader
-
-# local packages
-import atom_core.utilities as utilities
 
 if __name__ == "__main__":
     # Parse command line arguments
@@ -42,7 +38,10 @@ if __name__ == "__main__":
     ap.add_argument("-utf", "--use_tfs", action="store_true",
                     help='Use transformations in the bag file instead of generating new tfs from the xacro, '
                          'joint_state_msgs and robot state publisher.')
-    ap.add_argument("-cfg", "--config_file", help='Specify if you want to configure the calibration package with a specific configutation file. If this flag is not given, the standard config.yml ill be used.', type=str, required=False)
+    ap.add_argument(
+        "-cfg", "--config_file",
+        help='Specify if you want to configure the calibration package with a specific configutation file. If this flag is not given, the standard config.yml ill be used.',
+        type=str, required=False)
     args = vars(ap.parse_args())
 
     # --------------------------------------------------------------------------
@@ -72,7 +71,6 @@ if __name__ == "__main__":
     calibrate_launch_file = package_path + '/launch/calibrate.launch'
     dataset_playback_launch_file = package_path + '/launch/dataset_playback.launch'
 
-
     # Template engine1 setup
     file_loader = FileSystemLoader(atom_calibration_path + '/templates')
     env = Environment(loader=file_loader, undefined=jinja2.StrictUndefined)
@@ -90,7 +88,7 @@ if __name__ == "__main__":
     if not args['config_file']:
         config_file = package_path + '/calibration/config.yml'
     else:
-        config_file = package_path +'/calibration/' + args['config_file']
+        config_file = package_path + '/calibration/' + args['config_file']
         if not exists(config_file):
             config_file = package_path + '/calibration/config.yml'
     print('Loading config file ' + config_file)
@@ -619,7 +617,6 @@ if __name__ == "__main__":
                                                                        'Image_Topic': topic})
             displays.append(yaml.load(rendered, Loader=yaml.SafeLoader))
 
-
         elif modality == 'depth':
             depth += 1
             rendered = env.get_template('/rviz/Image.rviz').render(c={'Name': sensor_key + '-Labels' + '-Image',
@@ -639,7 +636,7 @@ if __name__ == "__main__":
 
             # Frustum
             rendered = env.get_template('/rviz/MarkerArray.rviz').render(c={'Name': sensor_key + '-Frustum',
-                                                                           'Marker_Topic': sensor_key + '/frustum'})
+                                                                            'Marker_Topic': sensor_key + '/frustum'})
             displays.append(yaml.load(rendered, Loader=yaml.SafeLoader))
 
         # elif msg_type == 'sensor_msgs/LaserScan':
@@ -666,8 +663,6 @@ if __name__ == "__main__":
                    'Update_Topic': sensor_key + '/data_labeler/update'}
             )
             displays.append(yaml.load(rendered, Loader=yaml.SafeLoader))
-
-
 
         # elif msg_type == 'sensor_msgs/PointCloud2':
         elif modality == 'lidar3d':
@@ -773,32 +768,30 @@ if __name__ == "__main__":
         if modality == 'rgb':  # displays for camera sensor
 
             # Image
-            rendered = env.get_template('/rviz/Image.rviz').render(c={'Name': sensor_key + '-Labels' + '-Image',
-                                                                      'Image_Topic': 'calibrate/c0' + topic + '/labeled'})
+            rendered = env.get_template('/rviz/Image.rviz').render(
+                c={'Name': sensor_key + '-Labels' + '-Image', 'Image_Topic': 'calibrate/c0' + topic + '/labeled'})
             displays.append(yaml.load(rendered, Loader=yaml.SafeLoader))
 
         elif modality == "depth":
-            rendered = env.get_template('/rviz/MarkerArray.rviz').render(c={'Name': sensor_key + '-LabeledData',
-                                                                            'Marker_Topic': 'calibrate/labeled_data'}
-                                                                         )
+            rendered = env.get_template('/rviz/MarkerArray.rviz').render(
+                c={'Name': sensor_key + '-LabeledData', 'Marker_Topic': 'calibrate/' + sensor_key + '/labeled_data'}
+            )
             displays.append(yaml.load(rendered, Loader=yaml.SafeLoader))
 
-            rendered = env.get_template('/rviz/Image.rviz').render(c={'Name': sensor_key + '-Labels' + '-Image',
-                                                                      'Image_Topic': 'calibrate/c0' + topic + '/labeled'})
+            rendered = env.get_template('/rviz/Image.rviz').render(
+                c={'Name': sensor_key + '-Labels' + '-Image', 'Image_Topic': 'calibrate/c0' + topic + '/labeled'})
             displays.append(yaml.load(rendered, Loader=yaml.SafeLoader))
 
         elif modality == 'lidar2d':
             # Labelled data
-            rendered = env.get_template('/rviz/MarkerArray.rviz').render(c={'Name': sensor_key + '-LabeledData',
-                                                                            'Marker_Topic': 'calibrate/labeled_data'}
-                                                                         )
+            rendered = env.get_template('/rviz/MarkerArray.rviz').render(
+                c={'Name': sensor_key + '-LabeledData', 'Marker_Topic': 'calibrate/' + sensor_key + '/labeled_data'})
             displays.append(yaml.load(rendered, Loader=yaml.SafeLoader))
 
         elif modality == 'lidar3d':
             # Labelled data
-            rendered = env.get_template('/rviz/MarkerArray.rviz').render(c={'Name': sensor_key + '-LabeledData',
-                                                                            'Marker_Topic': 'calibrate/labeled_data'}
-                                                                         )
+            rendered = env.get_template('/rviz/MarkerArray.rviz').render(
+                c={'Name': sensor_key + '-LabeledData', 'Marker_Topic': 'calibrate/' + sensor_key + '/labeled_data'})
             displays.append(yaml.load(rendered, Loader=yaml.SafeLoader))
 
     rviz['Visualization Manager']['Displays'] = displays
