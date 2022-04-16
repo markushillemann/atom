@@ -384,6 +384,33 @@ def getPointCloudMessageFromDictionary(dictionary_in):
     return msg
 
 
+@Cache(args_to_ignore=['_dataset'])
+def getPointsInSensorAsNPArray(_collection_key, _sensor_key, _label_key, _dataset):
+    cloud_msg = getPointCloudMessageFromDictionary(_dataset['collections'][_collection_key]['data'][_sensor_key])
+    idxs = _dataset['collections'][_collection_key]['labels'][_sensor_key][_label_key]
+    pc = ros_numpy.numpify(cloud_msg)[idxs]
+    points = np.zeros((4, pc.shape[0]))
+    points[0, :] = pc['x']
+    points[1, :] = pc['y']
+    points[2, :] = pc['z']
+    points[3, :] = 1
+    return points
+
+
+def getPointsInSensorAsNPArrayNonCached(_collection_key, _sensor_key, _label_key, _dataset):
+    # TODO: #395 Daniel, we should you told me about this one but I would like to talk to you again ... although this function is somewhere else, in the other place it uses the dataset as cache...
+    cloud_msg = getPointCloudMessageFromDictionary(
+        _dataset['collections'][_collection_key]['data'][_sensor_key])
+    idxs = _dataset['collections'][_collection_key]['labels'][_sensor_key][_label_key]
+    pc = ros_numpy.numpify(cloud_msg)[idxs]
+    points = np.zeros((4, pc.shape[0]))
+    points[0, :] = pc['x']
+    points[1, :] = pc['y']
+    points[2, :] = pc['z']
+    points[3, :] = 1
+    return points
+
+
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):

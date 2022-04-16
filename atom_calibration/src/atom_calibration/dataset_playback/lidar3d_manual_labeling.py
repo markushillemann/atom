@@ -9,7 +9,11 @@ def selectedPointsCallback(selected_point_cloud, selection, dataset):
 
     # Extract xyz coordinates from the selected points
     points_selected = pc2.read_points(selected_point_cloud)
+
+    print(points_selected)
     gen_selected_points = list(points_selected)
+
+    print(gen_selected_points)
 
     if len(gen_selected_points) == 0:  # To prevent unnecessary operations.
         return
@@ -17,6 +21,7 @@ def selectedPointsCallback(selected_point_cloud, selection, dataset):
     # sensor from the point cloud
     sensor = list(dataset['collections'][collection_key]['labels'].keys())[
         int(gen_selected_points[0][4])]
+    print('sensor is ' + str(sensor))
 
     selected_idxs = []
     for point in gen_selected_points:

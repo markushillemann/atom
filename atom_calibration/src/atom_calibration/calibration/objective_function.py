@@ -1,31 +1,31 @@
 # stdlib
-import atom_core.atom
 import math
 import copy
+from datetime import datetime
 
+import atom_core.atom
 import chardet
 import numpy as np
 import ros_numpy
-from scipy.spatial import distance
-from datetime import datetime
 
 # 3rd-party
 import OptimizationUtils.utilities as opt_utilities
+from scipy.spatial import distance
 from geometry_msgs.msg import Point
 from image_geometry import PinholeCameraModel
 from rospy_message_converter import message_converter
 from cv_bridge import CvBridge
 
 # Own modules
-from atom_core.dataset_io import getPointCloudMessageFromDictionary
+from atom_core.dataset_io import getPointCloudMessageFromDictionary, getPointsInSensorAsNPArray
 from atom_core.geometry import distance_two_3D_points, isect_line_plane_v3
 from atom_core.cache import Cache
 from atom_calibration.collect.label_messages import pixToWorld, worldToPix
 
-
 # -------------------------------------------------------------------------------
 # --- FUNCTIONS
 # -------------------------------------------------------------------------------
+
 
 @Cache(args_to_ignore=['_dataset'])
 def getPointsInPatternAsNPArray(_collection_key, _sensor_key, _dataset):
@@ -47,19 +47,6 @@ def getPointsDetectedInImageAsNPArray(_collection_key, _sensor_key, _dataset):
         [[item['x'] for item in _dataset['collections'][_collection_key]['labels'][_sensor_key]['idxs']],
          [item['y'] for item in _dataset['collections'][_collection_key]['labels'][_sensor_key]['idxs']]],
         dtype=np.float)
-
-
-@Cache(args_to_ignore=['_dataset'])
-def getPointsInSensorAsNPArray(_collection_key, _sensor_key, _label_key, _dataset):
-    cloud_msg = getPointCloudMessageFromDictionary(_dataset['collections'][_collection_key]['data'][_sensor_key])
-    idxs = _dataset['collections'][_collection_key]['labels'][_sensor_key][_label_key]
-    pc = ros_numpy.numpify(cloud_msg)[idxs]
-    points = np.zeros((4, pc.shape[0]))
-    points[0, :] = pc['x']
-    points[1, :] = pc['y']
-    points[2, :] = pc['z']
-    points[3, :] = 1
-    return points
 
 
 def getDepthImageFromDictionary(dictionary_in, safe=False):
@@ -242,7 +229,7 @@ def objectiveFunction(data):
                     rname = 'c' + str(collection_key) + '_' + str(sensor_key) + '_corner' + str(label_idx['id'])
                     r[rname] = np.sqrt((pts_in_image[0, idx] - pts_detected_in_image[0, idx]) ** 2 +
                                        (pts_in_image[1, idx] - pts_detected_in_image[1, idx]) ** 2) / normalizer[
-                                   'rgb']
+                        'rgb']
 
                 # Required by the visualization function to publish annotated images
                 idxs_projected = []
@@ -252,8 +239,6 @@ def objectiveFunction(data):
 
                 if 'idxs_initial' not in collection['labels'][sensor_key]:  # store the first projections
                     collection['labels'][sensor_key]['idxs_initial'] = copy.deepcopy(idxs_projected)
-
-
 
             # elif sensor['msg_type'] == 'LaserScan':
             elif sensor['modality'] == 'lidar2d':
@@ -305,14 +290,14 @@ def objectiveFunction(data):
                 rname = collection_key + '_' + sensor_key + '_eright'
                 r[rname] = float(np.amin(distance.cdist(extrema_right.transpose(),
                                                         pts_canvas_in_chessboard.transpose(), 'euclidean'))) / \
-                           normalizer['lidar2d']
+                    normalizer['lidar2d']
 
                 # compute minimum distance to inner_pts for left most edge (last in pts_in_chessboard list)
                 extrema_left = np.reshape(pts_in_chessboard[0:2, -1], (2, 1))  # longitudinal -> ignore z values
                 rname = collection_key + '_' + sensor_key + '_eleft'
                 r[rname] = float(np.amin(distance.cdist(extrema_left.transpose(),
                                                         pts_canvas_in_chessboard.transpose(), 'euclidean'))) / \
-                           normalizer['lidar2d']
+                    normalizer['lidar2d']
 
                 # --- Residuals: Longitudinal distance for inner points
                 pts = []
@@ -332,7 +317,7 @@ def objectiveFunction(data):
 
                     rname = collection_key + '_' + sensor_key + '_inner_' + str(idx)
                     r[rname] = float(np.amin(distance.cdist(xa, pts_inner_in_chessboard.transpose(), 'euclidean'))) / \
-                               normalizer['lidar2d']
+                        normalizer['lidar2d']
 
                 # --- Residuals: Beam direction distance from point to chessboard plan
                 # For computing the intersection we need:
@@ -434,7 +419,7 @@ def objectiveFunction(data):
                     rname = 'c' + collection_key + '_' + sensor_key + '_ld_' + str(idx)
                     r[rname] = np.min(distance.cdist(m_pt,
                                                      ground_truth_limit_points_in_pattern.transpose(), 'euclidean')) / \
-                               normalizer['lidar3d']
+                        normalizer['lidar3d']
                 # ------------------------------------------------------------------------------------------------
                 # print('Objective function for ' + sensor_key + ' took ' + str((datetime.now() - now).total_seconds()) + ' secs.')
 
@@ -468,7 +453,6 @@ def objectiveFunction(data):
                     if np.isnan(value):
                         print('Sensor ' + sensor_key + ' residual ' + rname + ' is nan')
                         print(value)
-
 
                 # print('ORTOGONAL RESIDUALS ' + sensor_key + ' took ' + str(
                 #     (datetime.now() - now).total_seconds()) + ' secs.')
@@ -505,7 +489,7 @@ def objectiveFunction(data):
                     rname = 'c' + collection_key + '_' + sensor_key + '_ld_' + str(idx)
                     r[rname] = np.min(distance.cdist(m_pt,
                                                      ground_truth_limit_points_in_pattern.transpose(), 'euclidean')) / \
-                               normalizer['depth']
+                        normalizer['depth']
                 # print('LONGITUDINAL RESIDUALS ' + sensor_key + ' took ' + str((datetime.now() - now).total_seconds()) + ' secs.')
                 # print('TOTAL TIME Objective function for ' + sensor_key + ' took ' + str(
                 #     (datetime.now() - now_i).total_seconds()) + ' secs.')

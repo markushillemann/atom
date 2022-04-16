@@ -1,8 +1,10 @@
 import math
+from copy import deepcopy
 
 import cv2
 import numpy as np
 import rospy
+from atom_core.dataset_io import genCollectionPrefix, getPointsInSensorAsNPArray, getPointsInSensorAsNPArrayNonCached
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import Header, ColorRGBA
 from geometry_msgs.msg import Point, Pose, Vector3, Quaternion
@@ -192,3 +194,58 @@ def createPatternMarkers(frame_id, ns, collection_key, now, dataset, graphics):
         markers.markers.append(m)
 
     return markers  # return markers
+
+
+def getRvizMarkersFrom3DLabels(dataset, collection_key, sensor_key, stamp, color, markers=None, use_cache=False):
+
+    if dataset['sensors'][sensor_key]['modality'] not in ['lidar3d', 'depth']:
+        raise ValueError('Sensor ' + sensor_key + ' does not have an adequate modality. ' +
+                         'Can only generate rviz markers for modalities lidar3d or deph.')
+
+    if markers is None:
+        markers = MarkerArray()
+
+    # Add labelled points to the marker
+    collection = dataset['collections'][collection_key]
+    frame_id = genCollectionPrefix(collection_key, collection['data'][sensor_key]['header']['frame_id'])
+    marker = Marker(
+        header=Header(frame_id=frame_id, stamp=stamp),
+        ns=str(collection_key) + '-' + str(sensor_key), id=0, frame_locked=True,
+        type=Marker.SPHERE_LIST, action=Marker.ADD, lifetime=rospy.Duration(0),
+        pose=Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(x=0, y=0, z=0, w=1)),
+        scale=Vector3(x=0.03, y=0.03, z=0.03),
+        color=ColorRGBA(r=color[0], g=color[1], b=color[2], a=0.5)
+    )
+
+    if use_cache:
+        points = getPointsInSensorAsNPArray(collection_key, sensor_key, 'idxs', dataset)
+    else:
+        points = getPointsInSensorAsNPArrayNonCached(collection_key, sensor_key, 'idxs', dataset)
+
+    for idx in range(0, points.shape[1]):
+        marker.points.append(
+            Point(x=points[0, idx], y=points[1, idx], z=points[2, idx]))
+
+    markers.markers.append(deepcopy(marker))
+
+    # Add limit points to the marker, this time with larger spheres
+    marker = Marker(
+        header=Header(frame_id=frame_id, stamp=stamp),
+        ns=str(collection_key) + '-' + str(sensor_key) + '-limit_points', id=0, frame_locked=True,
+        type=Marker.SPHERE_LIST, action=Marker.ADD, lifetime=rospy.Duration(0),
+        pose=Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(x=0, y=0, z=0, w=1)),
+        scale=Vector3(x=0.07, y=0.07, z=0.07),
+        color=ColorRGBA(r=color[0], g=color[1], b=color[2], a=0.5))
+
+    if use_cache:
+        points = getPointsInSensorAsNPArray(collection_key, sensor_key, 'idxs_limit_points', dataset)
+    else:
+        points = getPointsInSensorAsNPArrayNonCached(collection_key, sensor_key, 'idxs_limit_points', dataset)
+
+    for idx in range(0, points.shape[1]):
+        marker.points.append(
+            Point(x=points[0, idx], y=points[1, idx], z=points[2, idx]))
+
+    markers.markers.append(deepcopy(marker))
+
+    return markers
